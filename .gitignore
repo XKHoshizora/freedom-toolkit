@@ -1,0 +1,29 @@
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Test files
+test/
+*.test
+
+# Temporary files
+*.tmp
+*.log
+
+# Private configuration
+config.private
+*.key
+*.pem
+*.conf.private
