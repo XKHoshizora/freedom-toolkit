@@ -68,8 +68,27 @@ chmod +x /tmp/openwrt-passwall2-installer.sh
 5. ✅ 安装 PassWall2 核心
 6. ✅ 安装多协议支持（Xray、Hysteria2、SS、Trojan、WireGuard、sing-box）
 7. ✅ 安装辅助工具（chinadns-ng、dns2socks、tcping）
-8. ✅ 启用并启动服务
-9. ✅ 安装中文语言包
+8. ✅ **主题选择安装**（Material、Argon、OpenWrt 2020）
+9. ✅ **自动检测端口冲突**（如 80 端口被占用则使用 8080）
+10. ✅ **自动应用选择的主题**
+11. ✅ 启用并启动服务
+12. ✅ 安装中文语言包
+
+### 新增功能
+
+**🎨 主题选择**
+- 安装时可选择安装 Material、Argon、OpenWrt 2020 或全部主题
+- 自动应用选择的主题
+- 稍后可在 LuCI 界面中随时切换
+
+**🔧 端口自动配置**
+- 自动检测端口 80 是否被占用
+- 如被占用（如 GL.iNet 原厂固件的 nginx），自动配置为 8080
+- 确保 LuCI 界面可正常访问
+
+**📱 完整的中文支持**
+- 自动安装 PassWall2 中文语言包
+- 确保界面完全汉化
 
 ### 配置 PassWall2
 
@@ -107,9 +126,19 @@ bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh)
 - 默认用户名/密码：`admin/admin`
 - 在 Web 界面添加入站配置（Xray、Hysteria2、WireGuard 等）
 
-### 手动部署单协议
+### 快速部署
 
-详细教程请参考 [VPS 部署指南](docs/vps-deployment.md)（待添加）
+```bash
+# 连接到你的 VPS
+ssh root@your-vps-ip
+
+# 下载并运行安装脚本
+wget -O /tmp/installer.sh https://raw.githubusercontent.com/YOUR_USERNAME/freedom-toolkit/main/vps-xui-installer.sh
+chmod +x /tmp/installer.sh
+/tmp/installer.sh
+```
+
+详细教程请参考 [VPS 部署指南](docs/vps-deployment.md)
 
 ---
 
@@ -181,11 +210,13 @@ bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh)
 
 ### 待办事项
 
-- [ ] 添加 VPS 服务端一键部署脚本
+- [x] 添加 VPS 服务端一键部署脚本
+- [x] 编写详细的 VPS 部署指南
 - [ ] 支持更多 OpenWrt 版本和设备
 - [ ] 添加自动更新功能
 - [ ] 编写详细的故障排查指南
 - [ ] 添加可视化配置工具
+- [ ] 添加完整的使用教程视频
 
 ---
 

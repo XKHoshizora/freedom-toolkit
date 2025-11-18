@@ -17,6 +17,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# 全局变量
+SELECTED_THEME="bootstrap"
+LUCI_PORT=80
+USE_ALT_PORT=false
+
 # 日志函数
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -217,6 +222,121 @@ install_utilities() {
     log_info "辅助工具安装完成"
 }
 
+# 安装主题
+install_themes() {
+    log_step "主题安装选项..."
+    echo ""
+    
+    read -p "$(echo -e ${CYAN}是否安装额外主题? (y/n) [默认: y]:${NC} )" install_theme
+    install_theme=${install_theme:-y}
+    
+    if [[ ! "$install_theme" =~ ^[Yy]$ ]]; then
+        log_info "跳过主题安装，使用默认 Bootstrap 主题"
+        return
+    fi
+    
+    echo ""
+    echo -e "${CYAN}请选择要安装的主题:${NC}"
+    echo "  1) Material - Material Design 风格（推荐，稳定）"
+    echo "  2) Argon - 毛玻璃效果，最漂亮（需下载）"
+    echo "  3) OpenWrt 2020 - 官方现代主题"
+    echo "  4) 全部安装"
+    echo "  5) 跳过"
+    echo ""
+    
+    read -p "$(echo -e ${CYAN}请选择 [1-5, 默认: 1]:${NC} )" theme_choice
+    theme_choice=${theme_choice:-1}
+    
+    case $theme_choice in
+        1)
+            log_info "安装 Material 主题..."
+            opkg install luci-theme-material && log_info "✓ Material 安装成功" || log_warn "✗ Material 安装失败"
+            SELECTED_THEME="material"
+            ;;
+        2)
+            log_info "安装 Argon 主题..."
+            cd /tmp
+            if wget --no-check-certificate https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.3.1/luci-theme-argon_2.3.1_all.ipk 2>/dev/null; then
+                opkg install luci-theme-argon_2.3.1_all.ipk && log_info "✓ Argon 安装成功" || log_warn "✗ Argon 安装失败"
+                SELECTED_THEME="argon"
+            else
+                log_warn "Argon 下载失败，安装 Material 作为替代"
+                opkg install luci-theme-material
+                SELECTED_THEME="material"
+            fi
+            ;;
+        3)
+            log_info "安装 OpenWrt 2020 主题..."
+            opkg install luci-theme-openwrt-2020 && log_info "✓ OpenWrt 2020 安装成功" || log_warn "✗ OpenWrt 2020 安装失败"
+            SELECTED_THEME="openwrt2020"
+            ;;
+        4)
+            log_info "安装所有主题..."
+            opkg install luci-theme-material
+            opkg install luci-theme-openwrt-2020
+            cd /tmp
+            wget --no-check-certificate https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.3.1/luci-theme-argon_2.3.1_all.ipk 2>/dev/null && \
+            opkg install luci-theme-argon_2.3.1_all.ipk
+            SELECTED_THEME="material"
+            log_info "✓ 所有主题安装完成"
+            ;;
+        5)
+            log_info "跳过主题安装"
+            SELECTED_THEME="bootstrap"
+            return
+            ;;
+        *)
+            log_warn "无效选择，安装 Material 主题"
+            opkg install luci-theme-material
+            SELECTED_THEME="material"
+            ;;
+    esac
+}
+
+# 配置 uhttpd 端口
+configure_uhttpd() {
+    log_step "配置 LuCI Web 服务..."
+    
+    # 检查端口占用
+    if netstat -tlnp 2>/dev/null | grep -q ":80 "; then
+        log_warn "端口 80 已被占用（可能是 nginx 或其他服务）"
+        USE_ALT_PORT=true
+    else
+        USE_ALT_PORT=false
+    fi
+    
+    if [ "$USE_ALT_PORT" = true ]; then
+        log_info "配置 uhttpd 使用备用端口..."
+        
+        # 删除旧配置
+        uci delete uhttpd.main.listen_http 2>/dev/null
+        uci delete uhttpd.main.listen_https 2>/dev/null
+        
+        # 添加新配置
+        uci add_list uhttpd.main.listen_http='0.0.0.0:8080'
+        uci add_list uhttpd.main.listen_https='0.0.0.0:8443'
+        uci commit uhttpd
+        
+        LUCI_PORT=8080
+        log_info "LuCI 配置为端口 8080/8443"
+    else
+        log_info "使用默认端口 80/443"
+        LUCI_PORT=80
+    fi
+}
+
+# 应用主题
+apply_theme() {
+    if [ -n "$SELECTED_THEME" ] && [ "$SELECTED_THEME" != "bootstrap" ]; then
+        log_step "应用主题: $SELECTED_THEME"
+        
+        uci set luci.main.mediaurlbase="/luci-static/$SELECTED_THEME"
+        uci commit luci
+        
+        log_info "✓ 主题已设置为 $SELECTED_THEME"
+    fi
+}
+
 # 启用并启动服务
 enable_service() {
     log_step "启用并启动 PassWall2 服务..."
@@ -238,12 +358,26 @@ enable_service() {
 show_info() {
     log_step "安装完成！"
     
+    # 获取路由器 IP
+    ROUTER_IP=$(uci get network.lan.ipaddr 2>/dev/null || echo "192.168.1.1")
+    LUCI_PORT=${LUCI_PORT:-80}
+    
+    # 构建访问地址
+    if [ "$LUCI_PORT" = "80" ]; then
+        LUCI_URL="http://${ROUTER_IP}"
+    else
+        LUCI_URL="http://${ROUTER_IP}:${LUCI_PORT}"
+    fi
+    
     echo ""
     echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║          PassWall2 安装成功！                              ║${NC}"
     echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
-    echo -e "${GREEN}║${NC}  访问地址: http://$(uci get network.lan.ipaddr 2>/dev/null || echo "路由器IP")                          ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  访问地址: ${LUCI_URL}                              ${GREEN}║${NC}"
     echo -e "${GREEN}║${NC}  配置路径: 服务 → PassWall2                               ${GREEN}║${NC}"
+    if [ -n "$SELECTED_THEME" ] && [ "$SELECTED_THEME" != "bootstrap" ]; then
+        echo -e "${GREEN}║${NC}  当前主题: ${SELECTED_THEME}                               ${GREEN}║${NC}"
+    fi
     echo -e "${GREEN}║${NC}                                                            ${GREEN}║${NC}"
     echo -e "${GREEN}║${NC}  已安装协议:                                              ${GREEN}║${NC}"
     echo -e "${GREEN}║${NC}    ✓ Xray (VMess/VLESS)                                   ${GREEN}║${NC}"
@@ -253,10 +387,18 @@ show_info() {
     echo -e "${GREEN}║${NC}    ✓ WireGuard                                            ${GREEN}║${NC}"
     echo -e "${GREEN}║${NC}    ✓ sing-box                                             ${GREEN}║${NC}"
     echo -e "${GREEN}║${NC}                                                            ${GREEN}║${NC}"
+    if [ "$USE_ALT_PORT" = true ]; then
+        echo -e "${GREEN}║${NC}  注意: 端口 80 被占用，LuCI 使用端口 ${LUCI_PORT}              ${GREEN}║${NC}"
+        echo -e "${GREEN}║${NC}                                                            ${GREEN}║${NC}"
+    fi
+    echo -e "${GREEN}║${NC}  切换主题:                                                 ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}    系统 → 系统 → 语言和外观 → 主题                        ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}                                                            ${GREEN}║${NC}"
     echo -e "${GREEN}║${NC}  下一步:                                                   ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}    1. 在日本 VPS 部署服务端                               ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}    2. 在 PassWall2 中添加节点                             ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}    3. 配置分流规则（国内直连，国外代理）                 ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}    1. 访问管理界面                                        ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}    2. 在日本 VPS 部署服务端                               ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}    3. 在 PassWall2 中添加节点                             ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}    4. 配置分流规则（国内直连，国外代理）                 ${GREEN}║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -291,6 +433,9 @@ main() {
     install_passwall2
     install_protocols
     install_utilities
+    install_themes
+    configure_uhttpd
+    apply_theme
     enable_service
     show_info
     
